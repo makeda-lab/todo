@@ -469,8 +469,9 @@ function rate(r,days=30){let h=0,p=0;
   for(let i=0;i<days;i++){const d=addDays(today(),-i);
     if(scheduledOn(r,d)||r.log[d]){p++;if(r.log[d])h++}}
   return p?Math.round(h/p*100):null}
-function areaRate(ids,w){
-  const end=addDays(startOfWeek(today()),-7*w),rs=S.routines.filter(r=>ids.includes(r.areaId));
+function areaRate(ids,w){ return listRate(S.routines.filter(r=>ids.includes(r.areaId)),w) }
+function listRate(rs,w){
+  const end=addDays(startOfWeek(today()),-7*w);
   let h=0,p=0;
   rs.forEach(r=>{for(let i=0;i<7;i++){const d=addDays(end,i);
     if(diffDays(d,today())>0)continue;
@@ -797,17 +798,19 @@ function weekLabel(ws){
 }
 function seriesForAreas(){
   const ws=weekStarts(WEEKS);
-  return S.areas.filter(a=>!a.parent)
+  const line=(name,color,rs)=>({name,color,values:ws.map(w=>{
+    const v=listRate(rs,diffDays(startOfWeek(today()),w)/7);
+    return v==null?null:v*100;
+  })});
+  const out=S.areas.filter(a=>!a.parent)
     .map(a=>({a,ids:subtree(a.id)}))
     .filter(o=>S.routines.some(r=>o.ids.includes(r.areaId)))
-    .map(o=>({
-      name:o.a.name, color:`var(--s${o.a.slot})`,
-      values:ws.map(w=>{
-        const k=diffDays(startOfWeek(today()),w)/7;
-        const v=areaRate(o.ids,k);
-        return v==null?null:v*100;
-      })
-    }));
+    .map(o=>line(o.a.name,`var(--s${o.a.slot})`,S.routines.filter(r=>o.ids.includes(r.areaId))));
+  /* Routinen ohne Bereich fielen bisher komplett aus dem Diagramm — dann stand
+     dort „keine Routinen", obwohl es welche gab. */
+  const lose=S.routines.filter(r=>!r.areaId||!areaOf(r.areaId));
+  if(lose.length)out.push(line('Ohne Bereich','var(--muted)',lose));
+  return out;
 }
 function tasksPerWeek(){
   return weekStarts(WEEKS).map(w=>{
@@ -819,8 +822,7 @@ function tasksPerWeek(){
 function viewVerlauf(){
   const ws=weekStarts(WEEKS),series=seriesForAreas(),done=tasksPerWeek();
   const best=S.routines.reduce((m,r)=>Math.max(m,streak(r)),0);
-  const allIds=S.areas.map(a=>a.id);
-  const cur=areaRate(allIds,0),prev=areaRate(allIds,1);
+  const cur=listRate(S.routines,0),prev=listRate(S.routines,1);
   const delta=cur!=null&&prev!=null?Math.round((cur-prev)*100):null;
 
   const tiles=el('div');tiles.className='tiles';
@@ -892,6 +894,13 @@ function lineChart(series,ws){
       d+=(open?' L':' M')+X(i)+','+Y(v);open=true;
     });
     paths+=`<path class="serie" d="${d.trim()}" stroke="${s.color}"/>`;
+    /* Ein einzelner Punkt ergibt keine Linie und wäre sonst unsichtbar —
+     am Anfang hat man aber genau das: eine Woche. */
+    s.values.forEach((v,i)=>{
+      if(v==null)return;
+      const allein=(i===0||s.values[i-1]==null)&&(i===n-1||s.values[i+1]==null);
+      if(allein)paths+=`<circle class="dot" cx="${X(i)}" cy="${Y(v)}" r="4" fill="${s.color}"/>`;
+    });
     if(g.label){
       let li=-1;s.values.forEach((v,i)=>{if(v!=null)li=i});
       if(li>=0)labels+=`<text x="${X(li)+9}" y="${Y(s.values[li])+3.5}" font-size="11" font-weight="600"
