@@ -943,6 +943,12 @@ function wireChart(){
    Querverbindungen. Angetippte Bubble rutscht in die Mitte.
    ========================================================================= */
 const MW=940,MH=720,MCX=MW/2,MCY=MH/2,R1=200,RC=118,RF=232;
+/* Mit dem Daumen trifft man keinen 15-Pixel-Knopf. Auf Touch-Geräten sind die
+   Griffe größer und sitzen weiter außerhalb der Bubble — weiter außen, damit
+   die vergrößerte Trefferfläche nicht die Bubble selbst verschluckt. */
+const TOUCH=matchMedia('(pointer:coarse)').matches;
+const PLUS={vis:TOUCH?16:12,hit:TOUCH?26:21,off:TOUCH?22:0};
+const CUT={vis:TOUCH?15:10,hit:TOUCH?30:19};
 const ALL={id:'_all',name:'alles',slot:null,parent:null};
 let POS={},PREV=null,tween=null;
 
@@ -1132,8 +1138,8 @@ function edge(a,b,c,w,o,xi){
     const mx=(POS[a].x+POS[b].x)/2,my=(POS[a].y+POS[b].y)/2;
     out+=`<g class="cut" data-cut="${xi}" data-a="${a}" data-b="${b}" transform="translate(${mx},${my})"
         data-tip="Verbindung lösen">
-      <circle r="19" fill="transparent"/><circle class="cb" r="10"/>
-      <path d="M-5,0 H5" fill="none"/></g>`;
+      <circle r="${CUT.hit}" fill="transparent"/><circle class="cb" r="${CUT.vis}"/>
+      <path d="M-${CUT.vis*0.5},0 H${CUT.vis*0.5}" fill="none"/></g>`;
   }
   return out;
 }
@@ -1154,13 +1160,14 @@ function bubble(a,center,p){
     <text y="${center?5:3.8}" text-anchor="middle" font-size="${fs}" font-weight="600"
       fill="${all?'var(--muted)':'var(--text)'}">${esc(a.name.length>max?a.name.slice(0,max-1)+'…':a.name)}</text>
     ${cap&&!all?`<text y="${R+15}" text-anchor="middle" font-size="10.5" fill="var(--muted)">${cap}</text>`:''}
-    ${!all&&!a.parent&&!center?`<g class="plusbtn" data-plus="${a.id}" transform="translate(${R*.72},${-R*.72})">
-      <circle r="21" fill="transparent"/><circle class="pb" r="12"/>
-      <path d="M-5.5,0 H5.5 M0,-5.5 V5.5" fill="none"/></g>`:''}
-    ${center&&!all&&!a.parent?`<g class="plusbtn" data-plus="${a.id}" transform="translate(${R*.72},${-R*.72})">
-      <circle r="21" fill="transparent"/><circle class="pb" r="12"/>
-      <path d="M-5.5,0 H5.5 M0,-5.5 V5.5" fill="none"/></g>`:''}
+    ${!all&&!a.parent?plusBtn(a.id,R):''}
   </g>`;
+}
+function plusBtn(id,R){
+  const d=(R+PLUS.off)*0.72, k=PLUS.vis*0.46;
+  return `<g class="plusbtn" data-plus="${id}" transform="translate(${d},${-d})">
+    <circle r="${PLUS.hit}" fill="transparent"/><circle class="pb" r="${PLUS.vis}"/>
+    <path d="M-${k},0 H${k} M0,-${k} V${k}" fill="none"/></g>`;
 }
 const curve=(p,q)=>p&&q?`M${p.x},${p.y} Q${(p.x+q.x)/2},${(p.y+q.y)/2} ${q.x},${q.y}`:'';
 
@@ -1870,6 +1877,12 @@ document.getElementById('seedoff').onclick=()=>{
   const d=new Date(),h=d.getHours();
   document.getElementById('today').textContent=DAY[d.getDay()]+', '+d.getDate()+'. '+MON[d.getMonth()];
   document.getElementById('greeting').textContent=h<11?'Guten Morgen':h<18?'Heute':'Guten Abend';
+  /* Auf dem Handy startet die Karte etwas herangezoomt — sonst ist alles
+     briefmarkengroß. Nur beim allerersten Mal, danach gilt deine Einstellung. */
+  if(!UI.camInit){
+    UI.camInit=true;
+    if(innerWidth<640){const z=1.3;UI.cam={x:MCX*(1-z),y:MCY*(1-z),z}}
+  }
   render();syncCapture();
   if(!('ontouchstart'in window))input.focus();
 })();
