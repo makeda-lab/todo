@@ -140,6 +140,10 @@ section{margin-top:22px}
 
 .item{display:flex;align-items:flex-start;gap:11px;padding:10px 11px;border-radius:11px;
   transition:background .12s,opacity .24s,transform .24s}
+/* Routinenzeilen sind hoch (Titel + Bereich + Streifen). Der Kreis sitzt dann
+   mittig zum ganzen Block statt oben in der Ecke — sonst zielt man ins Leere. */
+.item[data-rid]{align-items:center}
+.item[data-rid] .box{margin-top:0}
 .item:hover{background:var(--surface)}
 .item.going{opacity:0;transform:translateX(14px)}
 .box{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;border:1.8px solid var(--faint);
@@ -330,6 +334,7 @@ footer button:hover{color:var(--accent)}
     <span class="spacer"></span>
     <button id="arrange">Reiter</button>
     <button id="exp">Sicherung</button>
+    <button id="copy">Kopieren</button>
     <button id="csv">CSV</button>
     <button id="imp">Import</button>
     <button id="seedoff">Beispiele weg</button>
@@ -1812,6 +1817,23 @@ document.getElementById('exp').onclick=()=>{
      'application/json');
   store.set(NS+'.backup',today());
   say(how==='geteilt'?'Sicherung im Teilen-Menü — in „Dateien" legen':'Sicherung geladen',null);
+  render();
+};
+/* Der kürzeste Weg, Daten von Safari in die Homescreen-App zu bekommen:
+   hier kopieren, dort unter Import einfügen. Dateien hin- und herschieben ist
+   auf dem iPhone der längere Weg. */
+document.getElementById('copy').onclick=async()=>{
+  const text=JSON.stringify({app:'todo-makeda',v:2,exported:new Date().toISOString(),data:S},null,2);
+  try{
+    await navigator.clipboard.writeText(text);
+    store.set(NS+'.backup',today());
+    say('Kopiert — in der anderen Fassung auf „Import" und einfügen',null);
+  }catch(e){
+    const t=el('textarea');t.value=text;t.style.cssText='position:fixed;top:-1000px';
+    document.body.appendChild(t);t.select();
+    try{document.execCommand('copy');say('Kopiert',null)}catch(e2){say('Kopieren ging nicht — nimm „Sicherung"',null)}
+    t.remove();
+  }
   render();
 };
 function backupAge(){
