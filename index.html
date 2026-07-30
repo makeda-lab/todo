@@ -43,11 +43,13 @@ h1{font-size:1.5rem;margin:0;font-weight:640;letter-spacing:-.015em}
 .tabs button{flex:1;font:inherit;font-size:.87rem;font-weight:560;border:0;border-radius:8px;
   padding:9px 4px;background:transparent;color:var(--muted);cursor:pointer;transition:.15s}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.tabs.arrange{flex-wrap:wrap}
 .tabs.arrange button{background:var(--surface);color:var(--text);box-shadow:none;
-  display:flex;align-items:center;justify-content:center;gap:5px;font-size:.8rem}
+  display:flex;align-items:center;justify-content:center;gap:5px;font-size:.8rem;
+  flex:1 1 46%}
 .tabs.arrange i{font-style:normal;color:var(--accent);font-size:.95rem;padding:0 3px}
 .tabs .handle{flex:0 0 38px;color:var(--faint);font-size:.95rem}
-.tabs.arrange .handle{background:var(--accent);color:#fff;box-shadow:none}
+.tabs.arrange .handle{background:var(--accent);color:#fff;box-shadow:none;flex:1 1 100%}
 
 /* ---------- Verlauf ---------- */
 .tiles{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -124,11 +126,7 @@ svg.chart text{font-family:inherit}
   body{padding-bottom:104px}
   .capture.open ~ * {}
 }
-@media (pointer:coarse){
-  .box{width:28px!important;height:28px!important}
-  .item{padding:13px 10px}
-  .kill{opacity:.5!important}
-}
+
 
 /* ---------- Listen ---------- */
 section{margin-top:22px}
@@ -182,6 +180,7 @@ section{margin-top:22px}
 .rrow:first-of-type{border-top:0}
 .rname{flex:1;min-width:0;font-size:.92rem}
 .rname small{display:block;color:var(--muted);font-size:.74rem}
+.brk{display:none}
 .stat{text-align:right;font-variant-numeric:tabular-nums;flex:none;min-width:48px}
 .stat b{font-size:1.02rem;font-weight:620;display:block;line-height:1.2}
 .stat small{color:var(--muted);font-size:.66rem;letter-spacing:.04em;text-transform:uppercase}
@@ -288,6 +287,22 @@ footer button:hover{color:var(--accent)}
 @media (max-width:640px){ #toast{bottom:calc(160px + env(safe-area-inset-bottom))} }
 #toast button{background:none;border:0;color:var(--bg);font:inherit;font-weight:640;
   cursor:pointer;text-decoration:underline;padding:0}
+/* Zuletzt, damit diese Regeln die allgemeinen überschreiben. */
+@media (pointer:coarse){
+  .box{width:28px!important;height:28px!important}
+  .item{padding:13px 10px}
+  .kill{opacity:.5!important}
+  /* Ein 14-px-Kästchen trifft man mit dem Daumen nicht. Der Name bekommt eine
+     eigene Zeile, damit darunter Platz für ein ordentliches Raster ist. */
+  .rrow{flex-wrap:wrap;row-gap:11px;padding:13px 0;gap:8px}
+  .rname{flex:1 1 auto}
+  .brk{display:block;flex:1 0 100%;height:0}   /* Zeilenumbruch nach dem Namen */
+  .grid{grid-template-columns:repeat(7,23px);gap:7px;margin-right:auto}
+  .cell{width:23px;height:23px;border-radius:6px}
+  .strip .cell{width:20px;height:20px;border-radius:5px}
+  .stat{min-width:46px}
+  .legend .lk{width:14px;height:14px;border-radius:4px}
+}
 </style>
 </head>
 <body>
@@ -431,26 +446,30 @@ function schedLabel(s){
   }
   return s.n===7?'wöchentlich':`alle ${s.n} Tage`;
 }
+/* Serie: ein abgehakter Tag zählt, egal ob er geplant war — sonst wäre
+   Nachtragen sinnlos. Abgebrochen wird nur an einem geplanten Tag ohne Haken. */
 function streak(r){
   let n=0,d=today();
   if(scheduledOn(r,d)&&!r.log[d])d=addDays(d,-1);
-  for(let i=0;i<400;i++){
-    if(diffDays(d,r.created)<0)break;
-    if(scheduledOn(r,d)){if(r.log[d])n++;else break}
+  const first=Object.keys(r.log).sort()[0]||r.created;
+  for(let i=0;i<800;i++){
+    if(diffDays(d,first)<0&&diffDays(d,r.created)<0)break;
+    if(r.log[d])n++;
+    else if(scheduledOn(r,d))break;
     d=addDays(d,-1);
   }
   return n;
 }
 function rate(r,days=30){let h=0,p=0;
   for(let i=0;i<days;i++){const d=addDays(today(),-i);
-    if(scheduledOn(r,d)){p++;if(r.log[d])h++}}
+    if(scheduledOn(r,d)||r.log[d]){p++;if(r.log[d])h++}}
   return p?Math.round(h/p*100):null}
 function areaRate(ids,w){
   const end=addDays(startOfWeek(today()),-7*w),rs=S.routines.filter(r=>ids.includes(r.areaId));
   let h=0,p=0;
   rs.forEach(r=>{for(let i=0;i<7;i++){const d=addDays(end,i);
     if(diffDays(d,today())>0)continue;
-    if(scheduledOn(r,d)){p++;if(r.log[d])h++}}});
+    if(scheduledOn(r,d)||r.log[d]){p++;if(r.log[d])h++}}});
   return p?h/p:null;
 }
 
@@ -627,11 +646,13 @@ function routineRow(r){
 }
 function cell(r,date,c){
   const fut=diffDays(date,today())>0;
-  const state=fut?'future':!scheduledOn(r,date)?'off':r.log[date]?'done':'miss';
+  const state=fut?'future':r.log[date]?'done':scheduledOn(r,date)?'miss':'off';
   const t=fromYmd(date);
   const lbl=DAY2[t.getDay()]+' '+t.getDate()+'.'+(t.getMonth()+1)+'. — '+
-    (state==='done'?'erledigt':state==='miss'?'ausgelassen (tippen zum Nachtragen)':
-     state==='off'?'nicht geplant':'liegt in der Zukunft');
+    (state==='done'?'erledigt · tippen nimmt es zurück'
+     :state==='miss'?'ausgelassen · tippen trägt nach'
+     :state==='off'?'nicht geplant · tippen trägt trotzdem nach'
+     :'liegt in der Zukunft');
   return `<i class="cell ${state}${date===today()?' today':''}" style="--c:${c}"
     data-day="${date}" data-tip="${lbl}"></i>`;
 }
@@ -697,8 +718,9 @@ function viewRoutinen(){
       const row=el('div');row.className='rrow';row.dataset.rid=r.id;
       const on=!!r.log[today()];
       row.innerHTML=`<div class="box rep${on?' on':''}" title="Heute abhaken"></div>
-        <div class="rname">${esc(r.title)}<small>${schedLabel(r.sched)}${
+        <div class="rname" title="Antippen zum Ändern">${esc(r.title)}<small>${schedLabel(r.sched)}${
           r.areaId&&areaOf(r.areaId)&&areaOf(r.areaId).parent?' · '+esc(areaOf(r.areaId).name):''}</small></div>
+        <i class="brk"></i>
         <div class="grid">${monthCells(r,c)}</div>
         <div class="stat"><b>${streak(r)}</b><small>Serie</small></div>
         <div class="stat"><b>${rate(r,30)==null?'—':rate(r,30)+'%'}</b><small>30 Tage</small></div>`;
@@ -1402,7 +1424,7 @@ board.addEventListener('click',e=>{
   if(c&&host.dataset.rid&&c.dataset.day){
     const r=S.routines.find(z=>z.id===host.dataset.rid);
     const d=c.dataset.day;
-    if(!r||diffDays(d,today())>0||!scheduledOn(r,d))return;
+    if(!r||diffDays(d,today())>0)return;
     if(r.log[d])delete r.log[d];else r.log[d]=1;
     return render();
   }
@@ -1417,7 +1439,9 @@ board.addEventListener('click',e=>{
     }
     if(e.target.closest('.kill')){const i=S.routines.indexOf(r);S.routines.splice(i,1);
       say('Routine gelöscht',()=>S.routines.splice(i,0,r));return render()}
-    if(host.classList.contains('rrow')){UI.editR=r.id;return render()}
+    /* Nur der Name öffnet den Editor. Vorher reichte ein Danebentippen auf ein
+       Kästchen, und statt eines nachgetragenen Tages ging ein Formular auf. */
+    if(host.classList.contains('rrow')&&e.target.closest('.rname')){UI.editR=r.id;return render()}
     return;
   }
 
