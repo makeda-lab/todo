@@ -1503,9 +1503,14 @@ board.addEventListener('blur',e=>{
   o.title=v;save();
 },true);
 
-/* Tooltips */
+/* Tooltips sind eine Maus-Angelegenheit. Auf dem Touchscreen löst jede
+   Berührung ein synthetisches mouseover aus — dann klebt eine Sprechblase über
+   der Zeile, die man gerade antippen wollte. Also dort gar nicht erst zeigen.
+   Das Fadenkreuz im Verlauf bleibt, das ist eine bewusste Geste. */
+const HOVER=matchMedia('(hover:hover) and (pointer:fine)').matches;
 const tip=document.getElementById('tip');
 document.addEventListener('mouseover',e=>{
+  if(!HOVER)return;
   const h=e.target.closest('[data-tip]');if(!h)return;
   tip.textContent=h.dataset.tip;tip.classList.add('on');
   const r=h.getBoundingClientRect();
