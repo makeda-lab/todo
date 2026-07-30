@@ -265,6 +265,9 @@ svg.map text{font-family:inherit;paint-order:stroke;stroke:var(--surface-2);stro
 .toolbar button:hover{border-color:var(--accent);color:var(--accent)}
 .toolbar button[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
 .toolbar .dan{color:#d03b3b}
+.csvbtn{font:inherit;font-size:.8rem;padding:7px 14px;border-radius:999px;cursor:pointer;
+  min-height:34px;border:1px solid var(--line);background:var(--surface);color:var(--text-2);flex:none}
+.csvbtn:hover{border-color:var(--accent);color:var(--accent)}
 .inline{display:flex;gap:7px;margin-top:11px}
 .inline input{flex:1;font:inherit;font-size:.95rem;padding:9px 12px;border-radius:10px;
   border:1px solid var(--accent);background:var(--surface);color:var(--text);outline:none}
@@ -337,6 +340,7 @@ footer button:hover{color:var(--accent)}
   <footer>
     <span id="stat"></span>
     <span class="spacer"></span>
+    <button id="ver" title="Antippen lädt die neueste Fassung">v?</button>
     <button id="arrange">Reiter</button>
     <button id="exp">Sicherung</button>
     <button id="copy">Kopieren</button>
@@ -358,6 +362,7 @@ footer button:hover{color:var(--accent)}
 /* --- Bau-Schalter. Die leere Fassung wird daraus erzeugt (build.sh),
        damit beide Fassungen nie auseinanderlaufen. --- */
 const WITH_EXAMPLES=false;
+const APP_VERSION='1.4';
 const NS='todo-makeda';
 
 const store=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t');
@@ -533,7 +538,7 @@ const VIEWS={heute:'Heute',routinen:'Routinen',bereiche:'Bereiche',verlauf:'Verl
 let UI={view:'heute',folded:{soon:true,later:true},pick:null,table:false,editR:null,
         linking:null,form:null,cam:{x:0,y:0,z:1},tabs:['heute','routinen','bereiche','verlauf'],arrange:false};
 try{Object.assign(UI,JSON.parse(store.get(NS+'.ui2')||'{}'))}catch(e){}
-UI.form=null;UI.linking=null;UI.arrange=false;UI.importer=false;
+UI.form=null;UI.linking=null;UI.arrange=false;UI.importer=false;UI.csv=false;
 /* Reiterliste heilen, falls eine ältere Fassung sie gespeichert hat */
 UI.tabs=(UI.tabs||[]).filter(v=>VIEWS[v]);
 Object.keys(VIEWS).forEach(v=>{if(!UI.tabs.includes(v))UI.tabs.push(v)});
@@ -580,6 +585,7 @@ function render(){
   renderTabs();
   board.innerHTML='';
   if(UI.importer)board.appendChild(importPanel());
+  if(UI.csv)board.appendChild(csvPanel());
   if(UI.view==='heute')viewHeute();
   if(UI.view==='routinen')viewRoutinen();
   if(UI.view==='bereiche')viewBereiche();
@@ -1404,6 +1410,17 @@ board.addEventListener('click',e=>{
     }
     if(t.id==='tgtable'){UI.table=!UI.table;return render()}
     if(t.id==='closeimp'){UI.importer=false;return render()}
+    if(t.dataset.csvclose){UI.csv=false;return render()}
+    if(t.dataset.copy!==undefined){
+      const x=csvFiles()[+t.dataset.copy];
+      navigator.clipboard.writeText(x[2]).then(()=>say(x[0]+' kopiert',null))
+        .catch(()=>say('Kopieren ging nicht',null));
+      return;
+    }
+    if(t.dataset.file!==undefined){
+      const x=csvFiles()[+t.dataset.file];
+      share([[x[1],x[2],'text/csv;charset=utf-8']]);return;
+    }
     if(t.id==='dopaste'){
       const v=document.getElementById('pastebox').value.trim();
       if(!v)return say('Nichts eingefügt',null);
@@ -1783,39 +1800,47 @@ function csvText(rows){
   const q=v=>{v=v==null?'':String(v);return /[";\n]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v};
   return '﻿'+rows.map(r=>r.map(q).join(';')).join('\r\n');
 }
-function exportCsv(){
-  const T=today(),files=[];
-  files.push(['todo-makeda-aufgaben-'+T+'.csv',csvText([
+document.getElementById('csv').onclick=()=>{UI.csv=!UI.csv;UI.importer=false;render()};
+function csvFiles(){
+  const T=today(),f=[];
+  f.push(['Aufgaben','todo-makeda-aufgaben-'+T+'.csv',csvText([
     ['Titel','Bereich','Oberbereich','Fällig','Uhrzeit','Erinnerung','Überfällig (Tage)','Angelegt'],
     ...S.tasks.map(t=>[t.title,t.areaId?areaOf(t.areaId)?.name:'',t.areaId?rootOf(t.areaId)?.name:'',
       t.due||'',t.time||'',t.remind?'ja':'',t.due&&diffDays(t.due,T)<0?-diffDays(t.due,T):'',
-      new Date(t.created).toISOString().slice(0,10)])
-  ]),'text/csv;charset=utf-8']);
-
-  files.push(['todo-makeda-routinen-'+T+'.csv',csvText([
+      new Date(t.created).toISOString().slice(0,10)])])]);
+  f.push(['Routinen','todo-makeda-routinen-'+T+'.csv',csvText([
     ['Routine','Bereich','Oberbereich','Rhythmus','Serie','Quote 30 Tage (%)','Angelegt'],
     ...S.routines.map(r=>[r.title,r.areaId?areaOf(r.areaId)?.name:'',r.areaId?rootOf(r.areaId)?.name:'',
-      schedLabel(r.sched),streak(r),rate(r,30)??'',r.created])
-  ]),'text/csv;charset=utf-8']);
-
-  /* Langformat: eine Zeile pro Routine und Tag — genau das, woraus sich in
-     jeder Tabellenkalkulation eine Pivot bauen lässt. */
+      schedLabel(r.sched),streak(r),rate(r,30)??'',r.created])])]);
   const rows=[['Datum','Wochentag','Routine','Bereich','Geplant','Erledigt']];
   S.routines.forEach(r=>{
     for(let i=89;i>=0;i--){
       const d=addDays(T,-i);
-      if(diffDays(d,r.created)<0)continue;
+      if(diffDays(d,r.created)<0&&!r.log[d])continue;
       const pl=scheduledOn(r,d);
       if(!pl&&!r.log[d])continue;
       rows.push([d,DAY[fromYmd(d).getDay()],r.title,r.areaId?areaOf(r.areaId)?.name:'',
         pl?'ja':'nein',r.log[d]?'ja':'nein']);
     }
   });
-  files.push(['todo-makeda-routinen-verlauf-'+T+'.csv',csvText(rows),'text/csv;charset=utf-8']);
-  const how=share(files);
-  say(how==='geteilt'?'3 CSV-Dateien im Teilen-Menü':'3 CSV-Dateien geladen',null);
+  f.push(['Routinen-Verlauf','todo-makeda-routinen-verlauf-'+T+'.csv',csvText(rows)]);
+  return f;
 }
-document.getElementById('csv').onclick=exportCsv;
+function csvPanel(){
+  const f=csvFiles(),d=el('div');d.className='card';
+  d.innerHTML=`<div class="cardhead"><h3>Tabellen ausgeben</h3>
+      <span class="sub">Semikolon getrennt</span></div>
+    ${f.map((x,i)=>`<div class="rrow" style="cursor:default">
+      <div class="rname">${x[0]}<small>${x[2].split('\r\n').length-1} Zeilen</small></div>
+      <button class="csvbtn" data-copy="${i}">Kopieren</button>
+      <button class="csvbtn" data-file="${i}">Datei</button>
+    </div>`).join('')}
+    <div class="hint"><b>Auf dem iPhone:</b> „Kopieren" und in Numbers oder Google Tabellen
+      einfügen — das ist der Weg, der sicher funktioniert. „Datei" zeigt der Browser oft
+      nur als Text an, statt sie zu sichern.</div>
+    <div class="toolbar"><button data-csvclose="1">Schließen</button></div>`;
+  return d;
+}
 
 /* Wiederherstellen: Datei ODER eingefügter Text. Auf dem iPhone ist Einfügen
    oft der kürzere Weg — Sicherung in Notizen, alles markieren, hier hinein. */
@@ -1867,6 +1892,13 @@ document.getElementById('copy').onclick=async()=>{
   }
   render();
 };
+/* Die Homescreen-App holt sich dieselbe Seite, hält sie aber gern im Zwischen-
+   speicher. Ein Tipp auf die Versionsnummer erzwingt eine frische Fassung. */
+(function(){
+  const v=document.getElementById('ver');
+  v.textContent='v'+APP_VERSION;
+  v.onclick=()=>{location.replace(location.pathname+'?v='+Date.now())};
+})();
 function backupAge(){
   const b=store.get(NS+'.backup');
   return b?diffDays(today(),b):null;
