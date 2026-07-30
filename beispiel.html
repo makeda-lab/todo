@@ -119,6 +119,11 @@ svg.chart text{font-family:inherit}
   .chips{display:none}
   .capture.open .chips{display:flex}
   .tabs button{font-size:.8rem;padding:8px 2px}
+  /* Die Karte darf nicht die ganze Höhe fressen — Werkzeugleiste und Liste
+     darunter müssen ohne Scrollen sichtbar bleiben. */
+  .card{padding:13px}
+  .mapwrap{margin-top:8px}
+  .hint{margin-top:7px;font-size:.74rem}
   .tabs .handle{flex:0 0 30px;font-size:.85rem}
   header{padding:18px 0 2px}
   h1{font-size:1.3rem}
@@ -231,7 +236,7 @@ table.tv th{color:var(--muted);font-weight:560;font-size:.72rem;text-transform:u
 /* ---------- Mindmap ---------- */
 .mapwrap{position:relative;background:var(--surface-2);border-radius:12px;overflow:hidden;margin-top:10px}
 svg.map{width:100%;height:auto;display:block;touch-action:none;cursor:grab}
-.mapwrap.tall svg.map{height:58vh}
+.mapwrap.tall svg.map{height:44vh}
 svg.map.grabbing{cursor:grabbing}
 svg.map text{font-family:inherit;paint-order:stroke;stroke:var(--surface-2);stroke-width:4px;
   stroke-linejoin:round;user-select:none;pointer-events:none}
@@ -956,8 +961,8 @@ const MW=940,MH=720,MCX=MW/2,MCY=MH/2,R1=200,RC=118,RF=232;
    Griffe größer und sitzen weiter außerhalb der Bubble — weiter außen, damit
    die vergrößerte Trefferfläche nicht die Bubble selbst verschluckt. */
 const TOUCH=matchMedia('(pointer:coarse)').matches;
-const PLUS={vis:TOUCH?16:12,hit:TOUCH?26:21,off:TOUCH?22:0};
-const CUT={vis:TOUCH?15:10,hit:TOUCH?30:19};
+const PLUS={vis:TOUCH?18:12,hit:TOUCH?34:21,off:TOUCH?26:0};
+const CUT={vis:TOUCH?16:10,hit:TOUCH?34:19};
 const ALL={id:'_all',name:'alles',slot:null,parent:null};
 let POS={},PREV=null,tween=null;
 
@@ -1079,7 +1084,9 @@ function viewBereiche(){
   const narrow=innerWidth<640;
   const wrap=el('div');wrap.className='card';
   wrap.innerHTML=`<div class="cardhead"><h3>${g.overview?'Deine Bereiche':esc(g.center.name)}</h3>
-    <span class="sub">${UI.linking?'Zweiten Bereich antippen':g.overview?'Bubbles ziehen · + für Unterbereich':'Mitte antippen führt zurück'}</span></div>
+    <span class="sub">${UI.linking?'Zweiten Bereich antippen'
+      :narrow?(g.overview?'ziehen · ＋ Unterbereich':'Mitte = zurück')
+      :g.overview?'Bubbles ziehen · + für Unterbereich':'Mitte antippen führt zurück'}</span></div>
     <div class="mapwrap${narrow?' tall':''}">
       <svg class="map" viewBox="0 0 ${MW} ${MH}" role="img" aria-label="Mindmap der Bereiche"
            preserveAspectRatio="xMidYMid ${narrow?'slice':'meet'}">
@@ -1089,9 +1096,12 @@ function viewBereiche(){
     </div>
     <div class="hint">${UI.linking
       ? `<b>Verbinden:</b> tippe den Bereich an, mit dem „${esc(areaOf(UI.linking)?.name||'')}" verbunden werden soll.`
-      : g.overview
-        ? 'Bubble antippen rückt sie in die Mitte. Ziehen ordnet die Gesamtkarte neu an.'
-        : 'Nachbar antippen springt weiter. Mitte antippen geht eine Ebene zurück. Gestrichelt = Querverbindung.'}</div>`;
+      : narrow
+        ? (g.overview?'Antippen rückt in die Mitte · Ziehen ordnet neu an'
+                     :'Nachbar antippen springt weiter · Mitte geht zurück')
+        : g.overview
+          ? 'Bubble antippen rückt sie in die Mitte. Ziehen ordnet die Gesamtkarte neu an.'
+          : 'Nachbar antippen springt weiter. Mitte antippen geht eine Ebene zurück. Gestrichelt = Querverbindung.'}</div>`;
   board.appendChild(wrap);
 
   const tb=el('div');tb.className='toolbar';
