@@ -198,8 +198,16 @@ section{margin-top:22px}
 .stat b{font-size:1.02rem;font-weight:620;display:block;line-height:1.2}
 .stat small{color:var(--muted);font-size:.66rem;letter-spacing:.04em;text-transform:uppercase}
 
-.grid{display:grid;grid-template-columns:repeat(7,14px);gap:5px;flex:none}
-.cell{width:14px;height:14px;border-radius:4px;cursor:pointer;transition:transform .1s}
+.gridwrap{flex:none}
+.gridhead{display:grid;grid-template-columns:repeat(7,18px);gap:5px;margin-bottom:3px}
+.gridhead i{font-style:normal;font-size:8.5px;color:var(--faint);text-align:center;letter-spacing:.02em}
+.grid{display:grid;grid-template-columns:repeat(7,18px);gap:5px;flex:none}
+.cell{width:18px;height:18px;border-radius:5px;cursor:pointer;transition:transform .1s;
+  display:flex;align-items:center;justify-content:center;
+  font-size:8.5px;font-style:normal;line-height:1;color:var(--faint);font-variant-numeric:tabular-nums}
+.cell.done{color:rgba(255,255,255,.92)}
+.cell.erster{font-weight:800;color:var(--accent)}
+.cell.done.erster{color:#fff;text-decoration:underline}
 .cell:active{transform:scale(.82)}
 .cell.done{background:var(--c)}
 .cell.miss{background:transparent;box-shadow:inset 0 0 0 1.5px var(--line)}
@@ -207,7 +215,7 @@ section{margin-top:22px}
 .cell.future{opacity:.3;cursor:default;background:var(--surface-2)}
 .cell.today{outline:1.5px solid var(--accent);outline-offset:1.5px}
 .strip{display:flex;gap:4px;align-items:center}
-.strip .cell{width:11px;height:11px;border-radius:3px}
+.strip .cell{width:11px;height:11px;border-radius:3px;font-size:0}
 
 .bars{display:flex;align-items:flex-end;gap:3px;height:38px;flex:none}
 .bar{width:9px;border-radius:3px 3px 0 0;background:var(--c);min-height:2px;opacity:.85}
@@ -313,9 +321,12 @@ footer button:hover{color:var(--accent)}
   .rrow{flex-wrap:wrap;row-gap:11px;padding:13px 0;gap:8px}
   .rname{flex:1 1 auto}
   .brk{display:block;flex:1 0 100%;height:0}   /* Zeilenumbruch nach dem Namen */
-  .grid{grid-template-columns:repeat(7,23px);gap:7px;margin-right:auto}
-  .cell{width:23px;height:23px;border-radius:6px}
-  .strip .cell{width:20px;height:20px;border-radius:5px}
+  .gridwrap{margin-right:auto}
+  .gridhead{grid-template-columns:repeat(7,23px);gap:6px}
+  .gridhead i{font-size:9px}
+  .grid{grid-template-columns:repeat(7,23px);gap:6px}
+  .cell{width:23px;height:23px;border-radius:6px;font-size:9.5px}
+  .strip .cell{width:20px;height:20px;border-radius:5px;font-size:0}
   .stat{min-width:46px}
   .legend .lk{width:14px;height:14px;border-radius:4px}
 }
@@ -366,7 +377,7 @@ footer button:hover{color:var(--accent)}
 /* --- Bau-Schalter. Die leere Fassung wird daraus erzeugt (build.sh),
        damit beide Fassungen nie auseinanderlaufen. --- */
 const WITH_EXAMPLES=false;
-const APP_VERSION='1.5';
+const APP_VERSION='1.6';
 const NS='todo-makeda';
 
 const store=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t');
@@ -660,22 +671,24 @@ function routineRow(r){
         ${r.areaId?`<span class="tag"><i class="swatch" style="background:${colorOf(r.areaId)}"></i>${esc(pathName(r.areaId))}</span>`:''}
         <span class="rep">↻ ${schedLabel(r.sched)}</span>
         ${st?`<span>${st} Tag${st>1?'e':''} Serie</span>`:''}
-        <span class="strip">${days.map(x=>cell(r,x,colorOf(r.areaId))).join('')}</span>
+        <span class="strip">${days.map(x=>cell(r,x,colorOf(r.areaId),false)).join('')}</span>
       </div>
     </div><button class="kill" title="Routine löschen">×</button>`;
   return d;
 }
-function cell(r,date,c){
+function cell(r,date,c,zahl){
   const fut=diffDays(date,today())>0;
   const state=fut?'future':r.log[date]?'done':scheduledOn(r,date)?'miss':'off';
-  const t=fromYmd(date);
-  const lbl=DAY2[t.getDay()]+' '+t.getDate()+'.'+(t.getMonth()+1)+'. — '+
+  const t=fromYmd(date),tag=t.getDate();
+  const lbl=DAY2[t.getDay()]+' '+tag+'.'+(t.getMonth()+1)+'. — '+
     (state==='done'?'erledigt · tippen nimmt es zurück'
      :state==='miss'?'ausgelassen · tippen trägt nach'
      :state==='off'?'nicht geplant · tippen trägt trotzdem nach'
      :'liegt in der Zukunft');
-  return `<i class="cell ${state}${date===today()?' today':''}" style="--c:${c}"
-    data-day="${date}" data-tip="${lbl}"></i>`;
+  /* Die Zahl im Kästchen ist der Anker: ohne sie weiß man beim Nachtragen
+     nicht, welchen Tag man gerade trifft. Der Monatserste wird hervorgehoben. */
+  return `<i class="cell ${state}${date===today()?' today':''}${tag===1?' erster':''}" style="--c:${c}"
+    data-day="${date}" data-tip="${lbl}">${zahl?tag:''}</i>`;
 }
 
 function taskRow(t){
@@ -742,7 +755,7 @@ function viewRoutinen(){
         <div class="rname" title="Antippen zum Ändern">${esc(r.title)}<small>${schedLabel(r.sched)}${
           r.areaId&&areaOf(r.areaId)&&areaOf(r.areaId).parent?' · '+esc(areaOf(r.areaId).name):''}</small></div>
         <i class="brk"></i>
-        <div class="grid">${monthCells(r,c)}</div>
+        <div class="gridwrap">${GRIDHEAD}<div class="grid">${monthCells(r,c)}</div></div>
         <div class="stat"><b>${streak(r)}</b><small>Serie</small></div>
         <div class="stat"><b>${rate(r,30)==null?'—':rate(r,30)+'%'}</b><small>30 Tage</small></div>`;
       card.appendChild(row);
@@ -752,7 +765,7 @@ function viewRoutinen(){
         <span><i class="lk" style="background:${c}"></i>erledigt</span>
         <span><i class="lk miss"></i>ausgelassen</span>
         <span><i class="lk off"></i>nicht geplant</span>
-        <span>Spalten Mo–So · unterste Zeile = diese Woche</span></div>`);
+        <span>${gridSpan()} · unterste Zeile = diese Woche</span></div>`);
     first=false;
     if(UI.table)card.appendChild(tableFor(rs));
     board.appendChild(card);
@@ -761,8 +774,15 @@ function viewRoutinen(){
 function monthCells(r,c){
   const start=addDays(startOfWeek(today()),-28);
   let out='';
-  for(let i=0;i<35;i++)out+=cell(r,addDays(start,i),c);
+  for(let i=0;i<35;i++)out+=cell(r,addDays(start,i),c,true);
   return out;
+}
+const GRIDHEAD=`<div class="gridhead">${[1,2,3,4,5,6,0].map(w=>
+  `<i>${DAY2[w][0]}</i>`).join('')}</div>`;
+function gridSpan(){
+  const a=addDays(startOfWeek(today()),-28),b=today();
+  const f=d=>{const x=fromYmd(d);return x.getDate()+'. '+MON[x.getMonth()].slice(0,3)};
+  return f(a)+' – '+f(b);
 }
 function routineEditor(r){
   const d=el('div');d.className='editor';d.dataset.edit=r.id;
@@ -1705,7 +1725,12 @@ function renderQuick(){
 }
 
 quick.addEventListener('change',e=>{
-  if(e.target.id==='areasel'){Q.area=e.target.value||null;renderQuick();syncCapture()}
+  if(e.target.id==='areasel'){
+    Q.area=e.target.value||null;renderQuick();syncCapture();
+    /* Zurück ins Feld — sonst klappt die Leiste zu und man kann nicht
+       weiterschreiben, obwohl man gerade erst den Bereich gewählt hat. */
+    setTimeout(()=>input.focus(),0);
+  }
 });
 quick.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
@@ -1736,7 +1761,8 @@ const clearQ=()=>{Q={due:undefined,time:undefined,remind:false,rel:null,mode:nul
 const cap=document.querySelector('.capture');
 function syncCapture(){
   const active=document.activeElement&&cap.contains(document.activeElement);
-  const on=active||!!input.value.trim()||Q.rel!=null||Q.due!==undefined||Q.time!==undefined||Q.remind;
+  const on=active||!!input.value.trim()||Q.rel!=null||Q.due!==undefined||Q.time!==undefined
+    ||Q.remind||Q.mode!=null||Q.sched!=null||Q.area!=null;
   cap.classList.toggle('open',on);
 }
 input.addEventListener('focus',syncCapture);
