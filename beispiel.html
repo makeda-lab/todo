@@ -83,6 +83,14 @@ svg.chart text{font-family:inherit}
 .quick button.rel[aria-pressed="true"]{background:var(--s2);border-color:var(--s2)}
 .quick button:disabled{opacity:.35;cursor:default}
 .quick .sep{width:1px;align-self:stretch;background:var(--line);margin:3px 3px;flex:none}
+.seg{display:inline-flex;background:var(--surface-2);border-radius:999px;padding:2px;gap:2px;flex:none}
+.seg button{border:0;background:transparent;color:var(--muted);min-height:30px;padding:5px 13px}
+.seg button[aria-pressed="true"]{background:var(--accent);color:#fff}
+.seg button:hover:not([aria-pressed="true"]){color:var(--accent)}
+#areasel{font:inherit;font-size:.8rem;font-weight:540;padding:6px 10px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface);color:var(--text-2);min-height:34px;
+  max-width:46%;cursor:pointer}
+#areasel:focus{outline:none;border-color:var(--accent)}
 .qnote{font-size:.75rem;color:var(--muted);padding-left:2px}
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
 .chip{font-size:.75rem;padding:3px 9px;border-radius:999px;background:var(--accent-soft);
@@ -91,15 +99,30 @@ svg.chart text{font-family:inherit}
 .swatch{width:8px;height:8px;border-radius:50%;flex:none}
 
 @media (max-width:640px){
-  .capture{position:fixed;top:auto;bottom:0;left:0;right:0;padding:10px 16px calc(10px + env(safe-area-inset-bottom));
-    border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(0,0,0,.07)}
-  .capture .field{order:3}
-  .capture{display:flex;flex-direction:column-reverse;gap:8px}
-  .quick{margin:0}
-  .qrow{overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px;scrollbar-width:none}
-  .qrow::-webkit-scrollbar{display:none}
-  .chips{margin:0}
-  body{padding-bottom:225px}
+  /* Auf dem Handy sitzt das Feld unten in der Daumenzone. Die Knopfreihen
+     erscheinen erst beim Tippen — sonst nähmen sie ein Drittel des Schirms
+     weg, ohne dass man sie gerade braucht. Wenn sie da sind, sind sie
+     vollständig da: umbrechen statt seitlich wegscrollen. */
+  .capture{position:fixed;top:auto;bottom:0;left:0;right:0;
+    padding:9px 14px calc(9px + env(safe-area-inset-bottom));
+    border-top:1px solid var(--line);box-shadow:0 -6px 24px rgba(0,0,0,.10);
+    display:flex;flex-direction:column-reverse;gap:7px}
+  .capture .field{order:3;padding:11px 13px}
+  .quick,.chips{margin:0}
+  .quick{display:none}
+  .capture.open .quick{display:flex}
+  .qrow{flex-wrap:wrap;overflow:visible}
+  .quick button{font-size:.78rem;padding:6px 11px;min-height:32px}
+  .quick .sep{display:none}
+  .chips{display:none}
+  .capture.open .chips{display:flex}
+  .tabs button{font-size:.8rem;padding:8px 2px}
+  .tabs .handle{flex:0 0 30px;font-size:.85rem}
+  header{padding:18px 0 2px}
+  h1{font-size:1.3rem}
+  footer{margin-top:26px;gap:10px 14px}
+  body{padding-bottom:104px}
+  .capture.open ~ * {}
 }
 @media (pointer:coarse){
   .box{width:28px!important;height:28px!important}
@@ -290,11 +313,11 @@ footer button:hover{color:var(--accent)}
   <footer>
     <span id="stat"></span>
     <span class="spacer"></span>
-    <button id="arrange">Reiter anordnen</button>
-    <button id="exp">Sicherung (JSON)</button>
+    <button id="arrange">Reiter</button>
+    <button id="exp">Sicherung</button>
     <button id="csv">CSV</button>
     <button id="imp">Import</button>
-    <button id="seedoff">Beispiele löschen</button>
+    <button id="seedoff">Beispiele weg</button>
   </footer>
 </div>
 
@@ -618,7 +641,7 @@ function taskRow(t){
   if(t.areaId)bits.push(`<span class="tag"><i class="swatch" style="background:${colorOf(t.areaId)}"></i>${esc(pathName(t.areaId))}</span>`);
   const dl=dueLabel(t.due,t.time);if(dl)bits.push(`<span>${dl}</span>`);
   if(t.remind)bits.push(t.due&&t.time
-    ? `<button class="lnk" data-ics="1" title="In den Kalender legen">🔔 Kalender</button>`
+    ? `<button class="lnk" data-ics="1" title="Als Termin mit Alarm in den Kalender legen">🔔 Kalender</button>`
     : `<span title="Erinnerung">🔔</span>`);
   if(stale>0&&stale<7)bits.push(`<span class="old">seit ${stale} Tag${stale>1?'en':''}</span>`);
   const d=el('div');d.className='item';d.dataset.tid=t.id;
@@ -813,8 +836,16 @@ function viewVerlauf(){
   wireChart();
 }
 
+/* Geometrie an einer Stelle, damit Zeichnen und Fadenkreuz nie auseinanderlaufen.
+   Auf dem Handy wird das Diagramm relativ höher — sonst schrumpft der ganze
+   Kasten auf Streichholzgröße und die Achsen sind nicht mehr lesbar. */
+function chartGeom(series){
+  const narrow=innerWidth<640;
+  const label=!narrow&&series.length<=4;
+  return{W:narrow?400:720,H:narrow?260:250,pl:narrow?30:36,pr:label?58:14,pt:14,pb:26,label,narrow};
+}
 function lineChart(series,ws){
-  const W=720,H=250,pl=36,pr=series.length<=4?58:16,pt=14,pb=26;
+  const g=chartGeom(series),{W,H,pl,pr,pt,pb}=g;
   const iw=W-pl-pr,ih=H-pt-pb,n=ws.length;
   const X=i=>pl+i*iw/(n-1), Y=v=>pt+(1-v/100)*ih;
   let grid='';
@@ -823,7 +854,7 @@ function lineChart(series,ws){
       <text class="axis" x="${pl-8}" y="${Y(v)+3.5}" text-anchor="end">${v===100?'100%':v}</text>`;
   });
   let xl='';
-  [0,Math.floor((n-1)/2),n-1].forEach(i=>{
+  (g.narrow?[0,n-1]:[0,Math.floor((n-1)/2),n-1]).forEach(i=>{
     xl+=`<text class="axis" x="${X(i)}" y="${H-6}" text-anchor="${i===0?'start':i===n-1?'end':'middle'}">${weekLabel(ws[i])}</text>`;
   });
   let paths='',labels='';
@@ -834,7 +865,7 @@ function lineChart(series,ws){
       d+=(open?' L':' M')+X(i)+','+Y(v);open=true;
     });
     paths+=`<path class="serie" d="${d.trim()}" stroke="${s.color}"/>`;
-    if(series.length<=4){
+    if(g.label){
       let li=-1;s.values.forEach((v,i)=>{if(v!=null)li=i});
       if(li>=0)labels+=`<text x="${X(li)+9}" y="${Y(s.values[li])+3.5}" font-size="11" font-weight="600"
         fill="var(--text-2)">${esc(s.name)}</text>`;
@@ -854,11 +885,12 @@ function wireChart(){
   const svg=board.querySelector('svg.chart');if(!svg)return;
   const hit=svg.querySelector('#hit'),cross=svg.querySelector('#cross');
   const series=seriesForAreas(),ws=weekStarts(WEEKS),n=ws.length;
+  const g=chartGeom(series);
   const box=()=>svg.getBoundingClientRect();
   const move=e=>{
     const b=box(),vb=svg.viewBox.baseVal;
     const x=(e.clientX-b.left)/b.width*vb.width;
-    const pl=36,iw=vb.width-pl-(series.length<=4?58:16);
+    const pl=g.pl,iw=vb.width-pl-g.pr;
     let i=Math.round((x-pl)/iw*(n-1));i=Math.max(0,Math.min(n-1,i));
     const cx=pl+i*iw/(n-1);
     cross.setAttribute('x1',cx);cross.setAttribute('x2',cx);cross.style.display='';
@@ -1457,19 +1489,23 @@ document.addEventListener('mouseout',e=>{if(e.target.closest('[data-tip]'))tip.c
    ERFASSUNG — Eingabefeld + Schnellknöpfe
    ========================================================================= */
 const input=document.getElementById('input'),chips=document.getElementById('chips'),quick=document.getElementById('quick');
-let Q={due:undefined,time:undefined,remind:false,rel:null};  // undefined = nicht per Knopf gesetzt
+let Q={due:undefined,time:undefined,remind:false,rel:null,mode:null,sched:null,area:null};
 
+/* Kurze Beschriftungen auf schmalen Schirmen — sonst muss man wischen, und ein
+   Knopf, den man erst hervorwischen muss, existiert nicht. */
+const SHORT=()=>innerWidth<640;
 const DATEBTN=()=>[
-  ['Heute',today()],
-  ['Morgen',addDays(today(),1)],
-  ['Wochenende',nextWeekday(today(),6,true)],
-  ['+1 Woche',addDays(today(),7)]
+  ['Heute','H',today()],
+  ['Morgen','Mo',addDays(today(),1)],
+  ['Wochenende','WE',nextWeekday(today(),6,true)],
+  ['+1 Woche','+1W',addDays(today(),7)]
 ];
-const TIMEBTN=['09:00','12:00','18:00','21:00'];
+const TIMEBTN=[['9','09:00'],['12','12:00'],['18','18:00'],['21','21:00']];
 /* Relative Knöpfe: „gleich" statt „an einem Datum". Setzen Tag + Uhrzeit in
-   einem Griff und schalten die Erinnerung mit ein — ohne Klingeln wäre
-   „in 5 Minuten" sinnlos. Nur für To-dos, Routinen haben keine Uhrzeit. */
-const RELBTN=[['+5 min',5],['+10 min',10],['+1 Std',60],['+3 Std',180]];
+   einem Griff und schalten die Erinnerung mit ein. Nur für To-dos. */
+const RELBTN=[['+5 min','+5m',5],['+10 min','+10m',10],['+1 Std','+1h',60],['+3 Std','+3h',180]];
+const RHYTHM=[['Täglich','Tägl.','daily'],['Werktags','Werkt.','werktags']];
+
 function relStamp(min){
   const d=new Date(Date.now()+min*60000);
   return{due:ymd(d),time:pad(d.getHours())+':'+pad(d.getMinutes())};
@@ -1477,85 +1513,162 @@ function relStamp(min){
 
 function eff(){
   const p=parse(input.value);
-  if(Q.rel!=null&&!p.sched){
+  const mode=Q.mode||(p.sched?'routine':'task');
+  const sched=mode==='routine'?(Q.sched||p.sched||{kind:'daily'}):null;
+  if(mode==='routine')return{mode,sched,due:null,time:null,remind:false,p};
+  if(Q.rel!=null){
     const r=relStamp(Q.rel);
-    return{due:r.due,time:r.time,remind:true,p};
+    return{mode,sched:null,due:r.due,time:r.time,remind:true,p};
   }
   return{
+    mode,sched:null,
     due: Q.due!==undefined?Q.due:p.due,
     time:Q.time!==undefined?Q.time:p.time,
     remind: Q.remind||p.remind,
     p
   };
 }
+const areaChoice=()=>{
+  const e=parse(input.value);
+  if(e.area){const a=S.areas.find(z=>z.name.toLowerCase()===e.area.toLowerCase());if(a)return a.id}
+  return Q.area||UI.pick||null;
+};
+
 function renderQuick(){
-  const e=eff(),ro=!!e.p.sched,dis=ro?' disabled':'';
-  quick.innerHTML=
-    `<div class="qrow">`
-    +DATEBTN().map(([l,d])=>`<button data-d="${d}" aria-pressed="${!ro&&e.due===d&&Q.rel==null}"${dis}>${l}</button>`).join('')
-    +`<span class="sep"></span>`
-    +`<button data-r="1" aria-pressed="${!ro&&e.remind}" title="Erinnerung"${dis}>🔔</button>`
-    +(ro?`<span class="qnote">Routine — Datum und Uhrzeit entfallen</span>`:'')
-    +`</div><div class="qrow">`
-    +TIMEBTN.map(t=>`<button data-t="${t}" aria-pressed="${!ro&&e.time===t&&Q.rel==null}"${dis}>${t.replace(':00','')}</button>`).join('')
-    +`<span class="sep"></span>`
-    +RELBTN.map(([l,m])=>`<button class="rel" data-rel="${m}" aria-pressed="${!ro&&Q.rel===m}"${dis}>${l}</button>`).join('')
-    +`</div>`;
+  const e=eff(),sh=SHORT(),L=(long,short)=>sh?short:long;
+  const days=e.sched&&e.sched.kind==='weekdays'?e.sched.days:[];
+  const isWerktags=days.length===5&&days.every(d=>d>=1&&d<=5);
+
+  let html=`<div class="qrow">
+    <span class="seg">
+      <button data-mode="task" aria-pressed="${e.mode==='task'}">To-do</button>
+      <button data-mode="routine" aria-pressed="${e.mode==='routine'}">Routine</button>
+    </span>
+    <select id="areasel" title="Bereich zuordnen">
+      <option value="">Bereich…</option>
+      ${S.areas.map(a=>`<option value="${a.id}"${a.id===areaChoice()?' selected':''}>${esc(pathName(a.id))}</option>`).join('')}
+    </select>
+  </div>`;
+
+  if(e.mode==='routine'){
+    html+=`<div class="qrow">
+      ${RHYTHM.map(([l,sl,k])=>`<button data-r2="${k}" aria-pressed="${
+        k==='daily'?e.sched.kind==='daily':isWerktags}">${L(l,sl)}</button>`).join('')}
+      ${[1,2,3,4,5,6,0].map(w=>`<button data-w="${w}" aria-pressed="${
+        !isWerktags&&days.includes(w)}">${DAY2[w]}</button>`).join('')}
+    </div>`;
+  } else {
+    html+=`<div class="qrow">
+      ${DATEBTN().map(([l,sl,d])=>`<button data-d="${d}" aria-pressed="${e.due===d&&Q.rel==null}">${L(l,sl)}</button>`).join('')}
+      <button data-r="1" aria-pressed="${e.remind}" title="Erinnerung">🔔</button>
+    </div><div class="qrow">
+      ${TIMEBTN.map(([l,t])=>`<button data-t="${t}" aria-pressed="${e.time===t&&Q.rel==null}">${l}</button>`).join('')}
+      ${RELBTN.map(([l,sl,m])=>`<button class="rel" data-rel="${m}" aria-pressed="${Q.rel===m}">${L(l,sl)}</button>`).join('')}
+    </div>`;
+  }
+  quick.innerHTML=html;
 
   const out=[];
-  if(ro)out.push(`<span class="chip">↻ Routine · ${schedLabel(e.p.sched)}</span>`);
+  if(e.mode==='routine')out.push(`<span class="chip">↻ Routine · ${schedLabel(e.sched)}</span>`);
   else if(e.due||e.time){
     const l=dueLabel(e.due,e.time)||(e.due?fromYmd(e.due).getDate()+'.'+(fromYmd(e.due).getMonth()+1)+'.':'')+(e.time?' '+e.time:'');
     out.push(`<span class="chip">${l.trim()}</span>`);
   }
-  if(e.remind&&!ro)out.push(`<span class="chip">🔔 Erinnerung</span>`);
-  if(e.p.area){const a=S.areas.find(z=>z.name.toLowerCase()===e.p.area.toLowerCase());
-    out.push(`<span class="chip"><i class="swatch" style="background:${a?colorOf(a.id):'var(--accent)'}"></i>${esc(e.p.area)}${a?'':' · neu'}</span>`)}
-  else if(UI.pick&&input.value.trim())out.push(`<span class="chip ghost">→ ${esc(areaOf(UI.pick)?.name||'')}</span>`);
+  if(e.remind)out.push(`<span class="chip">🔔 ${LOCAL_NOTIF?'Erinnerung':'für den Kalender'}</span>`);
+  const ac=areaChoice();
+  if(e.p.area&&!S.areas.some(z=>z.name.toLowerCase()===e.p.area.toLowerCase()))
+    out.push(`<span class="chip"><i class="swatch" style="background:var(--accent)"></i>${esc(e.p.area)} · neu</span>`);
+  else if(ac)out.push(`<span class="chip"><i class="swatch" style="background:${colorOf(ac)}"></i>${esc(pathName(ac))}</span>`);
   if(!out.length&&input.value.trim())out.push('<span class="chip ghost">To-do ohne Datum</span>');
   chips.innerHTML=out.join('');
 }
+
+quick.addEventListener('change',e=>{
+  if(e.target.id==='areasel'){Q.area=e.target.value||null;renderQuick();syncCapture()}
+});
 quick.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b||b.disabled)return;
   const cur=eff(),wasRel=Q.rel!=null;
+  if(b.dataset.mode){
+    Q.mode=b.dataset.mode;
+    if(Q.mode==='task')Q.sched=null; else {Q.rel=null;Q.due=undefined;Q.time=undefined;Q.remind=false}
+  }
+  if(b.dataset.r2==='daily')   {Q.mode='routine';Q.sched={kind:'daily'}}
+  if(b.dataset.r2==='werktags'){Q.mode='routine';Q.sched={kind:'weekdays',days:[1,2,3,4,5]}}
+  if(b.dataset.w!==undefined){
+    Q.mode='routine';
+    const w=+b.dataset.w;
+    let d=cur.sched&&cur.sched.kind==='weekdays'&&!(cur.sched.days.length===5&&cur.sched.days.every(x=>x>=1&&x<=5))
+      ?[...cur.sched.days]:[];
+    d=d.includes(w)?d.filter(x=>x!==w):[...d,w].sort();
+    Q.sched=d.length?{kind:'weekdays',days:d}:{kind:'daily'};
+  }
   if(b.dataset.rel){const m=+b.dataset.rel;Q.rel=Q.rel===m?null:m;Q.due=undefined;Q.time=undefined}
   if(b.dataset.d){Q.rel=null;Q.due=(!wasRel&&cur.due===b.dataset.d)?null:b.dataset.d}
   if(b.dataset.t){Q.rel=null;Q.time=(!wasRel&&cur.time===b.dataset.t)?null:b.dataset.t}
   if(b.dataset.r)Q.remind=!cur.remind;
-  renderQuick();input.focus();
+  renderQuick();syncCapture();input.focus();
 });
-const clearQ=()=>{Q={due:undefined,time:undefined,remind:false,rel:null}};
-input.addEventListener('input',renderQuick);
+const clearQ=()=>{Q={due:undefined,time:undefined,remind:false,rel:null,mode:null,sched:null,area:null}};
+/* „offen" heißt: Feld hat Fokus oder Inhalt, oder ein Knopf ist gedrückt.
+   So verschwindet die Leiste wieder, sobald man fertig ist. */
+const cap=document.querySelector('.capture');
+function syncCapture(){
+  const active=document.activeElement&&cap.contains(document.activeElement);
+  const on=active||!!input.value.trim()||Q.rel!=null||Q.due!==undefined||Q.time!==undefined||Q.remind;
+  cap.classList.toggle('open',on);
+}
+input.addEventListener('focus',syncCapture);
+input.addEventListener('blur',()=>setTimeout(syncCapture,180));
+input.addEventListener('input',()=>{renderQuick();syncCapture()});
 input.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){input.value='';clearQ();renderQuick();input.blur();return}
+  if(e.key==='Escape'){input.value='';clearQ();renderQuick();input.blur();syncCapture();return}
   if(e.key!=='Enter')return;
   const s=eff(),p=s.p;
   if(!p.title)return;
+
+  /* Bereich: getipptes #Tag schlägt die Auswahl, sonst Dropdown, sonst der
+     gerade gefilterte Bereich. Ein neuer Name legt den Bereich an. */
   let areaId=null;
   if(p.area){
     let a=S.areas.find(z=>z.name.toLowerCase()===p.area.toLowerCase());
     if(!a){a={id:uid(),name:p.area,slot:(S.areas.filter(z=>!z.parent).length%6)+1,parent:null,x:null,y:null};S.areas.push(a)}
     areaId=a.id;
-  } else if(UI.pick)areaId=UI.pick;
+  } else areaId=Q.area||UI.pick||null;
 
-  if(p.sched){
-    S.routines.push({id:uid(),title:p.title,areaId,sched:p.sched,created:today(),log:{}});
-    say('Routine angelegt · '+schedLabel(p.sched),()=>S.routines.pop());
+  if(s.mode==='routine'){
+    S.routines.push({id:uid(),title:p.title,areaId,sched:s.sched,created:today(),log:{}});
+    say('Routine angelegt · '+schedLabel(s.sched),()=>S.routines.pop());
     UI.folded.rout=false;
   } else {
     const t={id:uid(),title:p.title,areaId,due:s.due,time:s.time,remind:s.remind,created:Date.now()};
     S.tasks.push(t);
     if(s.due&&diffDays(s.due,today())>0&&diffDays(s.due,today())<=7)UI.folded.soon=false;
-    if(t.remind)arm(t);
+    if(t.remind){
+      arm(t);
+      if(!LOCAL_NOTIF&&t.due&&t.time&&!store.get(NS+'.notifhint')){
+        store.set(NS+'.notifhint','1');
+        say('Hier klingelt nur der Kalender — tippe an der Aufgabe auf „🔔 Kalender"',null);
+      }
+    }
   }
-  input.value='';clearQ();render();
+  input.value='';clearQ();syncCapture();render();
 });
 
-/* Erinnerungen — funktionieren, solange die App offen ist.
-   Echte Hintergrund-Benachrichtigungen erst in der nativen Version (siehe SPEC §9). */
+/* Erinnerungen — ehrlich gehalten.
+   Eine Webseite kann keine Benachrichtigung planen, die später von allein
+   klingelt. Auf dem Rechner geht immerhin eine, solange die Seite offen ist.
+   Auf iPhone/iPad geht auch das nicht: Safari erlaubt den Notification-
+   Konstruktor dort nicht, und geplante lokale Benachrichtigungen gibt es im
+   Web überhaupt nicht. Der einzige Weg, der auf dem iPhone wirklich klingelt,
+   ist der Kalender — deshalb zeigt die App dort auf „🔔 Kalender". */
+const IS_IOS=/iP(hone|ad|od)/.test(navigator.userAgent)
+  ||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+const LOCAL_NOTIF=(()=>{ try{ return typeof Notification==='function'&&!IS_IOS }catch(e){ return false } })();
+
 function arm(t){
   if(!t.due||!t.time)return;
-  if(!('Notification'in window))return;
+  if(!LOCAL_NOTIF)return;
   const go=()=>{
     const when=new Date(t.due+'T'+t.time+':00').getTime()-Date.now();
     if(when<0||when>86400000*2)return;
@@ -1706,7 +1819,7 @@ document.getElementById('seedoff').onclick=()=>{
   const d=new Date(),h=d.getHours();
   document.getElementById('today').textContent=DAY[d.getDay()]+', '+d.getDate()+'. '+MON[d.getMonth()];
   document.getElementById('greeting').textContent=h<11?'Guten Morgen':h<18?'Heute':'Guten Abend';
-  render();
+  render();syncCapture();
   if(!('ontouchstart'in window))input.focus();
 })();
 </script>
