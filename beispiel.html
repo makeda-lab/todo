@@ -64,7 +64,11 @@ svg.chart text{font-family:inherit}
 .dot{stroke:var(--surface);stroke-width:2}
 .cross{stroke:var(--muted);stroke-width:1;stroke-dasharray:3 3}
 .chartlegend{display:flex;gap:14px;flex-wrap:wrap;margin-top:11px;font-size:.76rem;color:var(--text-2)}
-.chartlegend span{display:inline-flex;align-items:center;gap:6px}
+.chartlegend span,.chartlegend .lg{display:inline-flex;align-items:center;gap:6px}
+.chartlegend .lg{font:inherit;font-size:.76rem;color:var(--text-2);background:none;border:0;
+  padding:4px 2px;cursor:pointer;min-height:30px}
+.chartlegend .lg:hover{color:var(--accent)}
+.chartlegend .lg.aus{color:var(--faint);text-decoration:line-through}
 .chartlegend i{width:11px;height:3px;border-radius:2px;display:block}
 
 /* ---------- Erfassung ---------- */
@@ -236,7 +240,7 @@ table.tv th{color:var(--muted);font-weight:560;font-size:.72rem;text-transform:u
 /* ---------- Mindmap ---------- */
 .mapwrap{position:relative;background:var(--surface-2);border-radius:12px;overflow:hidden;margin-top:10px}
 svg.map{width:100%;height:auto;display:block;touch-action:none;cursor:grab}
-.mapwrap.tall svg.map{height:44vh}
+.mapwrap.tall svg.map{height:34vh}
 svg.map.grabbing{cursor:grabbing}
 svg.map text{font-family:inherit;paint-order:stroke;stroke:var(--surface-2);stroke-width:4px;
   stroke-linejoin:round;user-select:none;pointer-events:none}
@@ -362,7 +366,7 @@ footer button:hover{color:var(--accent)}
 /* --- Bau-Schalter. Die leere Fassung wird daraus erzeugt (build.sh),
        damit beide Fassungen nie auseinanderlaufen. --- */
 const WITH_EXAMPLES=true;
-const APP_VERSION='1.4';
+const APP_VERSION='1.5';
 const NS='todo-makeda-beispiel';
 
 const store=(()=>{try{localStorage.setItem('__t','1');localStorage.removeItem('__t');
@@ -807,20 +811,33 @@ function weekLabel(ws){
   const d=fromYmd(ws),k=diffDays(startOfWeek(today()),ws)/7;
   return k===0?'diese Woche':`${d.getDate()}. ${MON[d.getMonth()].slice(0,3)}`;
 }
+/* Eine Linie je Routine. Farben aus derselben geprüften Palette, reihum —
+   ab der siebten wiederholt sich eine Farbe, dafür lässt sich in der Legende
+   jede Linie einzeln ausblenden. */
+function seriesForRoutines(){
+  const ws=weekStarts(WEEKS);
+  return S.routines.map((r,i)=>({
+    key:r.id, name:r.title, color:`var(--s${(i%6)+1})`,
+    values:ws.map(w=>{
+      const v=listRate([r],diffDays(startOfWeek(today()),w)/7);
+      return v==null?null:v*100;
+    })
+  }));
+}
 function seriesForAreas(){
   const ws=weekStarts(WEEKS);
-  const line=(name,color,rs)=>({name,color,values:ws.map(w=>{
+  const line=(key,name,color,rs)=>({key,name,color,values:ws.map(w=>{
     const v=listRate(rs,diffDays(startOfWeek(today()),w)/7);
     return v==null?null:v*100;
   })});
   const out=S.areas.filter(a=>!a.parent)
     .map(a=>({a,ids:subtree(a.id)}))
     .filter(o=>S.routines.some(r=>o.ids.includes(r.areaId)))
-    .map(o=>line(o.a.name,`var(--s${o.a.slot})`,S.routines.filter(r=>o.ids.includes(r.areaId))));
+    .map(o=>line(o.a.id,o.a.name,`var(--s${o.a.slot})`,S.routines.filter(r=>o.ids.includes(r.areaId))));
   /* Routinen ohne Bereich fielen bisher komplett aus dem Diagramm — dann stand
      dort „keine Routinen", obwohl es welche gab. */
   const lose=S.routines.filter(r=>!r.areaId||!areaOf(r.areaId));
-  if(lose.length)out.push(line('Ohne Bereich','var(--muted)',lose));
+  if(lose.length)out.push(line('_lose','Ohne Bereich',`var(--s${(out.length%6)+1})`,lose));
   return out;
 }
 function tasksPerWeek(){
@@ -830,8 +847,14 @@ function tasksPerWeek(){
   });
 }
 
+let CHART=[];
 function viewVerlauf(){
-  const ws=weekStarts(WEEKS),series=seriesForAreas(),done=tasksPerWeek();
+  const ws=weekStarts(WEEKS),done=tasksPerWeek();
+  const mode=UI.vmode||'routine';
+  const hidden=UI.hidden||(UI.hidden=[]);
+  const alle=mode==='routine'?seriesForRoutines():seriesForAreas();
+  const series=alle.filter(x=>!hidden.includes(x.key));
+  CHART=series;
   const best=S.routines.reduce((m,r)=>Math.max(m,streak(r)),0);
   const cur=listRate(S.routines,0),prev=listRate(S.routines,1);
   const delta=cur!=null&&prev!=null?Math.round((cur-prev)*100):null;
@@ -846,15 +869,28 @@ function viewVerlauf(){
   board.appendChild(tiles);
 
   const card=el('div');card.className='card';
-  card.innerHTML=`<div class="cardhead"><h3>Routinen pro Bereich</h3>
-    <span class="sub">${WEEKS} Wochen · Erfüllungsquote</span></div>`;
-  if(!series.length){
-    card.insertAdjacentHTML('beforeend','<div class="empty">Noch keine Routinen mit Bereich.</div>');
+  card.innerHTML=`<div class="cardhead"><h3>Verlauf</h3>
+    <span class="sub">${WEEKS} Wochen · Erfüllungsquote</span></div>
+    <div class="qrow" style="margin-top:10px">
+      <span class="seg">
+        <button data-vmode="routine" aria-pressed="${mode==='routine'}">je Routine</button>
+        <button data-vmode="bereich" aria-pressed="${mode==='bereich'}">je Bereich</button>
+      </span>
+      ${hidden.length?`<button class="csvbtn" data-vshow="all">Alle einblenden</button>`:''}
+    </div>`;
+  if(!alle.length){
+    card.insertAdjacentHTML('beforeend','<div class="empty">Noch keine Routinen.</div>');
   } else {
     card.insertAdjacentHTML('beforeend',lineChart(series,ws));
+    /* Legende ist gleichzeitig der Schalter: antippen blendet eine Linie aus
+       oder wieder ein. Bei vielen Routinen ist das der einzige Weg, eine
+       einzelne im Blick zu behalten. */
     card.insertAdjacentHTML('beforeend',
-      `<div class="chartlegend">${series.map(x=>
-        `<span><i style="background:${x.color}"></i>${esc(x.name)}</span>`).join('')}</div>`);
+      `<div class="chartlegend">${alle.map(x=>{
+        const aus=hidden.includes(x.key);
+        return `<button class="lg${aus?' aus':''}" data-vkey="${x.key}">
+          <i style="background:${aus?'var(--faint)':x.color}"></i>${esc(x.name)}</button>`;
+      }).join('')}</div>`);
   }
   board.appendChild(card);
 
@@ -931,7 +967,7 @@ function lineChart(series,ws){
 function wireChart(){
   const svg=board.querySelector('svg.chart');if(!svg)return;
   const hit=svg.querySelector('#hit'),cross=svg.querySelector('#cross');
-  const series=seriesForAreas(),ws=weekStarts(WEEKS),n=ws.length;
+  const series=CHART,ws=weekStarts(WEEKS),n=ws.length;
   const g=chartGeom(series);
   const box=()=>svg.getBoundingClientRect();
   const move=e=>{
@@ -967,8 +1003,8 @@ const MW=940,MH=720,MCX=MW/2,MCY=MH/2,R1=200,RC=118,RF=232;
    Griffe größer und sitzen weiter außerhalb der Bubble — weiter außen, damit
    die vergrößerte Trefferfläche nicht die Bubble selbst verschluckt. */
 const TOUCH=matchMedia('(pointer:coarse)').matches;
-const PLUS={vis:TOUCH?18:12,hit:TOUCH?34:21,off:TOUCH?26:0};
-const CUT={vis:TOUCH?16:10,hit:TOUCH?34:19};
+const PLUS={vis:TOUCH?22:12,hit:TOUCH?42:21,off:TOUCH?32:0};
+const CUT={vis:TOUCH?20:10,hit:TOUCH?42:19};
 const ALL={id:'_all',name:'alles',slot:null,parent:null};
 let POS={},PREV=null,tween=null;
 
@@ -1411,6 +1447,14 @@ board.addEventListener('click',e=>{
     if(t.id==='tgtable'){UI.table=!UI.table;return render()}
     if(t.id==='closeimp'){UI.importer=false;return render()}
     if(t.dataset.csvclose){UI.csv=false;return render()}
+    if(t.dataset.vmode){UI.vmode=t.dataset.vmode;UI.hidden=[];return render()}
+    if(t.dataset.vshow){UI.hidden=[];return render()}
+    if(t.dataset.vkey){
+      UI.hidden=UI.hidden||[];
+      const i=UI.hidden.indexOf(t.dataset.vkey);
+      if(i<0)UI.hidden.push(t.dataset.vkey);else UI.hidden.splice(i,1);
+      return render();
+    }
     if(t.dataset.copy!==undefined){
       const x=csvFiles()[+t.dataset.copy];
       navigator.clipboard.writeText(x[2]).then(()=>say(x[0]+' kopiert',null))
